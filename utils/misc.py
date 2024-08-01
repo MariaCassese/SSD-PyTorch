@@ -15,13 +15,13 @@ def load_config(fname):
 
 
 def build_model(cfg):
-    backbone = getattr(utils.models.backbones, cfg.backbone.pop('name'))(**cfg.backbone)
-    return getattr(utils.models, cfg.model)(
+    backbone = getattr(utils.models.backbones, cfg['backbone'].pop('name'))(**cfg['backbone'])
+    return getattr(utils.models, cfg['model'])(
         backbone,
-        num_classes=len(cfg.class_names),
-        input_size=cfg.input_size,
-        anchor_scales=cfg.anchor_scales,
-        anchor_aspect_ratios=cfg.anchor_aspect_ratios
+        num_classes=len(cfg['class_names']),
+        input_size=cfg['input_size'],
+        anchor_scales=cfg['anchor_scales'],
+        anchor_aspect_ratios=cfg['anchor_aspect_ratios']
     )
 
 

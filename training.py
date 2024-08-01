@@ -2,6 +2,7 @@ import os
 import argparse
 import torch
 import warnings
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import autocast, GradScaler

@@ -4,6 +4,7 @@ import utils.data.transforms as T
 from PIL import Image
 from utils.constants import BACKGROUND_INDEX
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Subset
 
 
 def _get_transform(image_size, augment, image_mean, image_stddev):
@@ -68,11 +69,16 @@ class _ObjectDetectionDataset(Dataset):
 
 def create_dataloader(json_file, batch_size, image_size, image_mean,
                       image_stddev, augment=False, shuffle=False, seed=None,
-                      num_workers=0):
+                      num_workers=0, limit=None):
     dataset = _ObjectDetectionDataset(
         json_file,
         _get_transform(image_size, augment, image_mean, image_stddev)
     )
+    
+    if limit is not None:
+        indices = list(range(len(dataset)))
+        indices = indices[:limit]
+        dataset =Subset(dataset, indices)
 
     if seed is not None:
         g = torch.Generator()
@@ -82,7 +88,7 @@ def create_dataloader(json_file, batch_size, image_size, image_mean,
 
     dataloader = DataLoader(dataset,
                             batch_size=batch_size,
-                            collate_fn=dataset.collate_fn,
+                            collate_fn=dataset.collate_fn, 
                             shuffle=shuffle,
                             num_workers=num_workers,
                             pin_memory=True,
