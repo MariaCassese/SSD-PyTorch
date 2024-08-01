@@ -36,10 +36,10 @@ class CheckpointManager(object):
 
     def restore(self, filename):
         data = torch.load(os.path.join(self.logdir, filename))
-        self.model.load_state_dict(data['model_state_dict'])
-        self.optim.load_state_dict(data['optim_state_dict'])
-        self.scaler.load_state_dict(data['scaler_state_dict'])
-        self.scheduler.load_state_dict(data['scheduler_state_dict'])
+        self.model.load_stateDict(data['model_state_dict'])
+        self.optim.loadStateDict(data['optim_state_dict'])
+        self.scaler.loadStateDict(data['scaler_state_dict'])
+        self.scheduler.loadStateDict(data['scheduler_state_dict'])
         self.epoch = data['epoch']
         self.best_score = data['best_score']
 
@@ -83,22 +83,7 @@ def test_step(images, true_boxes, true_classes, difficulties, model, amp, metric
     det_boxes, det_scores, det_classes = nms(*model.decode(preds))
     metrics['APs'].update(det_boxes, det_scores, det_classes, true_boxes, true_classes, difficulties)
 
-    APs = metrics['APs'].result
-    mAP50 = APs[:, 0].mean()
-    mAP = APs.mean()
-    return mAP50, mAP
-
-def grid_search(config, args):
-    # Estrazione delle liste di parametri per la grid search
-    batch_sizes = config['training_configs']['batch_size']
-    epochs_list = config['training_configs']['epochs']
-    learning_rates = config['training_configs']['optim']['lr']
-    momentums = config['training_configs']['optim']['momentum']
-    weight_decays = config['training_configs']['optim']['weight_decay']
-    #ipdb.set_trace()
-    # Creazione di tutte le combinazioni di iperparametri
-    param_combinations = list(itertools.product(batch_sizes, epochs_list, learning_rates, momentums, weight_decays))
-    
+def run_grid_search(config, args, param_combinations, logdir_prefix):
     # Lista per salvare i risultati
     results = []
 
@@ -123,7 +108,7 @@ def grid_search(config, args):
         cfg['training_configs']['optim']['weight_decay'] = weight_decay
         
         # Log directory per questa combinazione
-        logdir = os.path.join(args.logdir, f"bs_{batch_size}_epochs_{num_epochs}_lr_{lr}_momentum_{momentum}_wd_{weight_decay}")
+        logdir = os.path.join(args.logdir, f"{logdir_prefix}_bs_{batch_size}_epochs_{num_epochs}_lr_{lr}_momentum_{momentum}_wd_{weight_decay}")
         if not os.path.exists(logdir):
             os.makedirs(logdir)
 
@@ -185,8 +170,13 @@ def grid_search(config, args):
                 pbar = tqdm(val_loader, desc="Validation", bar_format="{l_bar}{bar:20}{r_bar}")
                 with torch.no_grad():
                     for images, true_boxes, true_classes, difficulties in pbar:
-                        mAP50, mAP = test_step(images, true_boxes, true_classes, difficulties, model, not args.no_amp, metrics, device) #CONTROLLARE PERCHé NOT ARGD.NO_AMP
+                        test_step(images, true_boxes, true_classes, difficulties, model, not args.no_amp, metrics, device)
                         pbar.set_postfix(loss=metrics['loss'].result)
+
+                # Calcolo delle metriche mAP
+                APs = metrics['APs'].result
+                mAP50 = APs[:, 0].mean()
+                mAP = APs.mean()
 
                 if mAP > ckpt.best_score + min_delta:
                     no_improvement_count = 0
@@ -198,7 +188,8 @@ def grid_search(config, args):
                 writers['val'].add_scalar('Loss', metrics['loss'].result, epoch)
                 writers['val'].add_scalar('mAP@[0.5]', mAP50, epoch)
                 writers['val'].add_scalar('mAP@[0.5:0.95]', mAP, epoch)
-                print(f"Epoch {epoch}/{num_epochs} - mAP@[0.5]: {mAP50:.3f}, mAP@[0.5:0.95]: {mAP:.3f} (best: {ckpt.best_score:.3f})")
+                print(f"mAP@[0.5]: {mAP50:.3f}")
+                print(f"mAP@[0.5:0.95]: {mAP:.3f} (best: {ckpt.best_score:.3f})")
 
                 # Early Stopping Check
                 if no_improvement_count >= patience:
@@ -222,19 +213,7 @@ def grid_search(config, args):
             'best_score': ckpt.best_score
         })
 
-    # Salvataggio dei risultati in JSON
-    results_json_file = os.path.join(args.logdir, 'grid_search_results.json')
-    with open(results_json_file, 'w') as file:
-        json.dump(results, file, indent=4)
-
-    # Salvataggio dei risultati in CSV
-    import csv
-    results_csv_file = os.path.join(args.logdir, 'grid_search_results.csv')
-    with open(results_csv_file, 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['batch_size', 'epochs', 'lr', 'momentum', 'weight_decay', 'best_score'])
-        for res in results:
-            writer.writerow([res['batch_size'], res['epochs'], res['lr'], res['momentum'], res['weight_decay'], res['best_score']])
+    return results
 
 def main():
     parser = argparse.ArgumentParser(
@@ -249,7 +228,39 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.cfg)
-    grid_search(config, args)
+    
+    # First Grid Search
+    batch_sizes = config['training_configs']['batch_size']
+    epochs_list = config['training_configs']['epochs']
+    learning_rates = config['training_configs']['optim']['lr']
+    momentums = config['training_configs']['optim']['momentum']
+    weight_decays = config['training_configs']['optim']['weight_decay']
+    param_combinations = list(itertools.product(batch_sizes, epochs_list, learning_rates, momentums, weight_decays))
+    results = run_grid_search(config, args, param_combinations, "first_grid")
+
+    # Find the best parameters from the first grid search
+    best_params = max(results, key=lambda x: x['best_score'])
+    best_lr = best_params['lr']
+    best_momentum = best_params['momentum']
+    best_weight_decay = best_params['weight_decay']
+
+    # Second Grid Search with training_config_2
+    new_lrs = config['training_config_2']['optim']['lr']
+    new_momentums = config['training_config_2']['optim']['momentum']
+    new_weight_decays = config['training_config_2']['optim']['weight_decay']
+    new_param_combinations = list(itertools.product(batch_sizes, epochs_list, new_lrs, new_momentums, new_weight_decays))
+    new_results = run_grid_search(config, args, new_param_combinations, "second_grid")
+
+    # Save both results
+    all_results = {
+        'first_grid_search': results,
+        'second_grid_search': new_results
+    }
+    results_json_file = os.path.join(args.logdir, 'all_grid_search_results.json')
+    with open(results_json_file, 'w') as file:
+        json.dump(all_results, file, indent=4)
 
 if __name__ == '__main__':
     main()
+
+

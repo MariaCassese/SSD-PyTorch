@@ -4,6 +4,5 @@ __pycache__/
 tmp/
 logs/
 datasets/
-configs/
 tests/
 *.pth
