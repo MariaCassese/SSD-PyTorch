@@ -228,6 +228,8 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.cfg)
+    ipdb.set_trace()
+    
     
     # First Grid Search
     batch_sizes = config['training_configs']['batch_size']
