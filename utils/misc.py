@@ -15,6 +15,8 @@ def load_config(fname):
 
 
 def build_model(cfg):
+
+    #backbone = getattr(utils.models.backbones, "VGG16")(**cfg['backbone'])
     backbone = getattr(utils.models.backbones, cfg['backbone'].pop('name'))(**cfg['backbone'])
     return getattr(utils.models, cfg['model'])(
         backbone,

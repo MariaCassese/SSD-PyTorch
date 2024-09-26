@@ -2,23 +2,24 @@ import os
 import argparse
 import torch
 import warnings
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import autocast, GradScaler
 from utils.data.dataloader import create_dataloader
 from utils.misc import load_config, build_model, nms
 from utils.metrics import Mean, AveragePrecision
+from torch.optim.lr_scheduler import ReduceLROnPlateau, MultiStepLR
 
 
 class CheckpointManager(object):
-    def __init__(self, logdir, model, optim, scaler, scheduler, best_score):
+    def __init__(self, logdir, model, optim, scaler,scheduler, scheduler2, best_score):
         self.epoch = 0
         self.logdir = logdir
         self.model = model
         self.optim = optim
         self.scaler = scaler
         self.scheduler = scheduler
+        self.scheduler2 = scheduler2
         self.best_score = best_score
 
     def save(self, filename):
@@ -27,6 +28,7 @@ class CheckpointManager(object):
             'optim_state_dict': self.optim.state_dict(),
             'scaler_state_dict': self.scaler.state_dict(),
             'scheduler_state_dict': self.scheduler.state_dict(),
+            'scheduler2_state_dict': self.scheduler2.state_dict(),
             'epoch': self.epoch,
             'best_score': self.best_score,
         }
@@ -38,6 +40,7 @@ class CheckpointManager(object):
         self.optim.load_state_dict(data['optim_state_dict'])
         self.scaler.load_state_dict(data['scaler_state_dict'])
         self.scheduler.load_state_dict(data['scheduler_state_dict'])
+        self.scheduler2.load_state_dict(data['scheduler2_state_dict'])
         self.epoch = data['epoch']
         self.best_score = data['best_score']
 
@@ -137,10 +140,15 @@ def main():
     optim = getattr(torch.optim, cfg.optim.pop('name'))(model.parameters(),
                                                         **cfg.optim)
     scaler = GradScaler(enabled=enable_amp)
-    scheduler = getattr(torch.optim.lr_scheduler, cfg.scheduler.pop('name'))(
-        optim,
-        **cfg.scheduler
-    )
+    multistep_cfg = cfg.scheduler["multi-step"]
+    reduce_on_plateau_cfg = cfg.scheduler['reduce_on_plateau']
+    
+    multistep_scheduler = MultiStepLR(optim, milestones=multistep_cfg['milestones'], 
+                                       gamma=multistep_cfg['gamma'])
+    reduce_on_plateau_scheduler = ReduceLROnPlateau(optim, mode=reduce_on_plateau_cfg['mode'],
+                                                    patience=reduce_on_plateau_cfg['patience'],
+                                                    factor=reduce_on_plateau_cfg['factor'], verbose=True)
+    
     metrics = {
         'loss': Mean(),
         'APs': AveragePrecision(len(cfg.class_names), cfg.recall_steps)
@@ -151,7 +159,8 @@ def main():
                              model=model,
                              optim=optim,
                              scaler=scaler,
-                             scheduler=scheduler,
+                             scheduler=multistep_scheduler,
+                             scheduler2=reduce_on_plateau_scheduler,
                              best_score=0.)
     ckpt.restore_lastest_checkpoint()
 
@@ -200,7 +209,9 @@ def main():
                 warmup_scheduler.step()
         writers['train'].add_scalar('Loss', loss, epoch)
         writers['train'].add_scalar('Learning rate', get_lr(optim), epoch)
-        scheduler.step()
+        multistep_scheduler.step()
+        reduce_on_plateau_scheduler.step(metrics['loss'].result)
+        print(epoch, loss, multistep_scheduler.get_last_lr(), reduce_on_plateau_scheduler.get_last_lr())
 
         # Validation
         if epoch % args.val_period == 0:
@@ -232,6 +243,7 @@ def main():
             writers['val'].add_scalar('Loss', metrics['loss'].result, epoch)
             writers['val'].add_scalar('mAP@[0.5]', mAP50, epoch)
             writers['val'].add_scalar('mAP@[0.5:0.95]', mAP, epoch)
+            
 
         ckpt.epoch += 1
         ckpt.save('last.pth')
