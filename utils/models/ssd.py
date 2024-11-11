@@ -140,7 +140,7 @@ class SSD(nn.Sequential):
             regression_preds.transpose(1, 2),    # [bs, num_anchors, 4]
             regression_target,
             reduction='none'
-        )[positive_mask].sum()
+        )[positive_mask].sum() ##localization loss -- bounding box -- only positive
 
         classification_loss = F.cross_entropy(   # [bs, num_anchors]
             class_preds,                         # [bs, num_classes + 1, num_anchors]
@@ -161,6 +161,8 @@ class SSD(nn.Sequential):
             descending=True
         )
         negative_classification_loss = negative_classification_loss[negative_mask].sum()
+        
+        #total_classification_loss = total_classification_loss / num_positives.sum()
 
         total_loss = (
             regression_loss

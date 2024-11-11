@@ -2,9 +2,7 @@ import torch
 import numpy as np
 from utils.boxes import calculate_ious
 from utils.constants import BACKGROUND_INDEX
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class Mean(object):
     def __init__(self):
@@ -57,7 +55,6 @@ class AveragePrecision(object):
                 ],
                 return_counts=True
             )
-            #self.num_relevent[class_indices] += counts.cpu()
             self.num_relevent[class_indices.to(device)] += counts.to(device) 
 
             if num_dets == 0:
@@ -68,13 +65,7 @@ class AveragePrecision(object):
             self.det_classes.extend(det_classes[i].tolist())
 
             # Determine if detections match ground truth in terms of IoU and class label
-            #ious = calculate_ious(true_boxes[i], det_boxes[i])   # [num_true, num_dets]
-            ious = calculate_ious(true_boxes[i], det_boxes[i]).to(device)
-            """mask = (   # [num_true, num_dets]
-                (ious >= iou_thres[0])
-                & (true_classes[i].unsqueeze(-1) == det_classes[i])
-                & (true_classes[i].unsqueeze(-1) != BACKGROUND_INDEX)
-            )"""
+            ious = calculate_ious(true_boxes[i], det_boxes[i]).to(device)# [num_true, num_dets]
             mask = (  # <== Modificato
                 (ious >= iou_thres[0])
                 & (true_classes[i].unsqueeze(-1).to(device) == det_classes[i].to(device))  # <== Modificato
@@ -124,9 +115,9 @@ class AveragePrecision(object):
             APs: float32 tensor. Shape: [num_classes, 10].
         """
         scores, indices = torch.sort(
-            torch.FloatTensor(self.det_scores).to(device),
+            torch.FloatTensor(self.det_scores),
             descending=True
-            )
+        )
         #classes = torch.IntTensor(self.det_classes)[indices]
         classes = torch.IntTensor(self.det_classes).to(device)[indices]
         #true_positives = torch.IntTensor(self.true_positives)[indices]
@@ -141,7 +132,7 @@ class AveragePrecision(object):
         for c in range(self.num_classes):
             if (classes == c).int().sum() == 0:
                 continue
-            
+
             #tp_cum = torch.cumsum(true_positives[classes == c].to(device), axis=0)  # [n, 10]
             tp_cum = torch.cumsum(true_positives[classes == c].to(device), axis=0) 
             #fp_cum = torch.cumsum(false_positives[classes == c].to(device), axis=0) # [n, 10]
