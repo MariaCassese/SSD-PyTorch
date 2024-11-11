@@ -58,12 +58,11 @@ def main():
     results = []
     processing_times = []
 
-    writer = SummaryWriter(log_dir=args.log_dir)  # Initialize TensorBoard writer
+    writer = SummaryWriter(log_dir=args.log_dir)  
 
     with torch.no_grad():
         for k, v in tqdm(coco.imgs.items()):
             
-            # starting time of the process
             start_time = timer()
 
             image_path = os.path.join(args.coco_dir, 'val2017/%s' % v['file_name'])
@@ -100,9 +99,6 @@ def main():
                         'score': score
                     }
                 )
-            #end time
-            end_time = timer()
-            processing_times.append(end_time - start_time)
 
     _, tmp_json = tempfile.mkstemp('.json')
     with open(tmp_json, 'w') as f:
@@ -132,29 +128,21 @@ def main():
     for metric, value in metrics.items():
         writer.add_scalar(metric, value)
     
-    writer.close()  # Close the writer
+    writer.close()  
     
-    # Ottieni il minimo e il massimo dei tempi di elaborazione
+    # Min and max time
     min_time = min(processing_times)
     max_time = max(processing_times)
-    print(f"Tempo minimo per immagine: {min_time:.4f} secondi")
-    print(f"Tempo massimo per immagine: {max_time:.4f} secondi")
+    print(f"Min time for image: {min_time:.4f} seconds")
+    print(f"Max time for image: {max_time:.4f} seconds")
     
-    # Salva i tempi di elaborazione in un file CSV
+    # save times in csv file
     with open(args.times_file, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["Tempo per immagine (secondi)"])  # Intestazione
+        writer.writerow(["Time for image (seconds)"])  
         for time in processing_times:
-            writer.writerow([time])  # Salva ciascun tempo in una nuova riga
-    print(f"Tempi di elaborazione salvati in {args.times_file}")
-
-    # Crea e salva un istogramma dei tempi di elaborazione limitato tra min e max
-    """plt.hist(processing_times, bins=4, range=(min_time, max_time))
-    plt.xlabel("Tempo per immagine (secondi)")
-    plt.ylabel("Frequenza")
-    plt.title("Distribuzione dei tempi di elaborazione per immagine")
-    plt.savefig(args.output_image)  # Salva l'istogramma come immagine
-    print(f"Istogramma salvato in {args.output_image}")"""
+            writer.writerow([time]) 
+    print(f"Times saved in: {args.times_file}")
 
 if __name__ == '__main__':
     main()
